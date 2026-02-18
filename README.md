@@ -1,187 +1,126 @@
-# 📺 Watchtower
+# 🗼 Watchtower
 
-**Watchtower** is an automated media tracking and alert system that keeps your TV shows and movies in sync with real-world release data.
+Automatically sync TV show/movie data from TMDb to Notion and receive daily digest notifications via SMS.
 
-It pulls rich metadata from TMDb, updates a Notion database, tracks season and episode status, detects bulk releases, and sends timely alerts when something important happens — like a new episode dropping or a season finishing.
+## 🚀 Quick Start
 
-Think of it as a *release intelligence engine* for streaming content.
+### 1. Install Dependencies
+```bash
+pip install -r requirements.txt
+```
 
----
+### 2. Configure Settings
+```bash
+# Copy the example environment file
+copy .env.example .env
 
-## ✨ Features
+# Edit .env with your credentials
+# - Notion token and database ID
+# - TMDb API key
+# - Gmail/SMS settings
+```
 
-### 🎬 Media Intelligence
-- Automatically resolves **movie vs TV** from title or IMDb ID
-- Pulls full TMDb **details JSON** (seasons, episodes, cast, networks, trailers)
-- Tracks:
-  - Season count (excluding future seasons)
-  - Total episodes
-  - Current season & episode
-  - First air date
-  - Last air date
-  - Next air date
-  - Latest season year
+### 3. Run Watchtower
+```bash
+# Full sync with notifications
+python watchtower.py --workers 20 --force-refresh
 
-### 📡 Streaming Awareness
-- Detects where content is streaming (US region)
-- Normalizes providers into:
-  - Netflix
-  - Amazon Prime
-  - HBO Max
-  - Apple TV
-  - Hulu
-  - Paramount+
-  - Peacock
-  - AMC
-- Populates **Streaming Services** (multi-select)
-- Tracks **Streaming First Seen**
+# Dry run (preview changes)
+python watchtower.py --dry-run
 
-### 🧭 Status Tracking
-- **Series Status**
-  - In Production 🟢
-  - Ended ⚪
-  - Cancelled 🔴
-- **Season Status**
-  - Currently Airing 📺
-  - Season Finished ✅
-  - Between Seasons ⏸️
-  - Upcoming 🔜
-- **Next Season Status**
-  - Announced
-  - Coming Soon
-  - No Info
-  - Canceled
+# Only update missing data
+python watchtower.py --only-missing
+```
 
-### 🧠 Smart Logic
-- Detects **bulk season releases**
-- Adjusts season count when a future season exists
-- Always maintains a valid **Next Air Date** when possible
-- Auto-handles finales vs future seasons
-- Preserves user-controlled fields
+## 📋 Configuration
 
-### 🗂 Notion Enhancements
-- Updates:
-  - Genres (multi-select)
-  - Top Cast (multi-select)
-  - Overview (text)
-  - Poster (Files & Media)
-  - Page cover image
-- Protects manual fields like ratings and watch status
+All settings are in `.env`:
 
-### 🔔 Alerts & Digest
-- Generates a **daily digest page** in Notion
-- Sends SMS alerts for:
-  - New episodes
-  - Bulk season drops
-  - New movie releases
-  - Upcoming seasons
+### Required Settings
+- `NOTION_TOKEN` - Your Notion integration token
+- `DATABASE_ID` - Your Notion database ID
+- `TMDB_API_KEY` - TMDb API key
 
----
+### Optional Settings
+- `EMAIL_FROM` / `EMAIL_PASSWORD` - For SMS notifications
+- `VERIZON_NUMBER` - Your phone@carrier-gateway.com
+- `NOTIFY_*` - Enable/disable specific notification types
 
-## 🛠 Tech Stack
+### Notification Types
+Toggle notifications in `.env`:
+- `NOTIFY_EPISODE_AIRING_TODAY` - Episodes airing today
+- `NOTIFY_SEASON_FINALE` - Season finales
+- `NOTIFY_BULK_SEASON_DROP` - Netflix-style season drops
+- `NOTIFY_RETURNING_SOON` - Shows returning within 7 days
+- `NOTIFY_LONG_GAP` - Shows on hiatus (30+ days)
+- `NOTIFY_MULTIPLE_EPISODES_TONIGHT` - Busy TV nights (3+ shows)
 
-- **Python 3.10+**
-- **TMDb API**
-- **Notion API**
-- Optional SMS integration (Twilio or similar)
-
----
-
-## 🚀 CLI Usage
+## 🎯 Command Line Options
 
 ```bash
-python watchtower.py [options]
+--workers N              # Parallel TMDb API workers (default: 10)
+--force-refresh          # Update all fields (recommended for daily runs)
+--dry-run                # Preview changes without updating
+--only-missing           # Only process shows without TMDb ID
+--debug-json "Title"     # Print raw TMDb JSON for debugging
+```
 
+## 📱 SMS Setup
 
-Available Flags
-Flag	Description
---dry-run	Show what would change without updating Notion
---force-refresh	Re-sync all fields
---only-missing	Only populate missing fields
---only-missing-summary	Skip fully populated pages
---retries N	Retry failed TMDb calls (default: 3)
---debug-json "Title"	Dump full TMDb details JSON and exit
+1. Get Gmail app password: https://myaccount.google.com/apppasswords
+2. Find your carrier's SMS gateway:
+   - Verizon: `@vtext.com`
+   - AT&T: `@txt.att.net`
+   - T-Mobile: `@tmomail.net`
+3. Update `.env` with your credentials
 
+## 🧪 Testing
 
-Examples:
-python watchtower.py --force-refresh
-python watchtower.py --debug-json "The Night Agent"
+```bash
+# Run test suite
+python test_watchtower.py
 
-Debugging:
-python watchtower.py --debug-json "Cross"
+# Test SMS
+python send_text.py "Test message"
+```
 
+## ⚡ Performance
 
+- **164 shows**: ~4 minutes (down from 12 minutes!)
+- **Parallel processing**: TMDb API + Notion updates
+- **Smart caching**: Reduces unnecessary API calls
 
-Notion Database Requirements
+## 🔒 Security
 
-Your Notion database should include (at minimum):
+- `.env` file is git-ignored (never committed)
+- `.env.example` is the template (safe to share)
+- All secrets stored in environment variables
 
-Required
+## 📚 Documentation
 
-Title (Title)
+- `README.md` - This file (setup & usage)
+- `FUTURE_FEATURES.md` - Roadmap & feature ideas
+- `README_TESTS.md` - Testing documentation
 
-TMDb ID (Number)
+## 💡 Tips
 
-IMDb ID (Text)
+- Run with `--force-refresh` daily to catch episode updates
+- Use `--workers 20` for fastest TMDb fetching
+- Notion updates limited to 5 workers (API rate limits)
 
-Supported Properties
+## 🆘 Troubleshooting
 
-Season Count (Number)
+**SMS not sending?**
+- Verify Gmail app password is correct
+- Check carrier gateway address
+- Test with: `python send_text.py "Test"`
 
-Total Episodes (Number)
+**Slow performance?**
+- Increase workers: `--workers 20`
+- Use `--only-missing` for quick updates
+- Check network connection
 
-Current Season (Number)
-
-First Air Date (Date)
-
-Last Air Date (Date)
-
-Next Air Date (Date)
-
-Latest Season Year (Number)
-
-Series Status (Select)
-
-Season Status (Select)
-
-Next Season Status (Select)
-
-Streaming Services (Multi-select)
-
-Genres (Multi-select)
-
-Top Cast (Multi-select)
-
-Overview (Text)
-
-Poster (Files & Media)
-
-Is Digest (Checkbox)
-
-
-
-Configuration
-
-Set these at the top of the script:
-
-TMDB_API_KEY = "your_tmdb_key"
-NOTION_TOKEN = "your_notion_token"
-DATABASE_ID = "your_database_id"
-REGION = "US"
-
-
-
-## Why “Watchtower”?
-Because it:
-
-Watches release schedules
-Detects changes
-Alerts you before you miss something
-Never asks “are we there yet?”
-
-
-
-
-
-
-
+**Missing configuration?**
+- Ensure `.env` exists (copy from `.env.example`)
+- Verify all required fields are filled
+- Check for typos in environment variable names
