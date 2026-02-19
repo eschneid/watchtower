@@ -6,8 +6,6 @@ Creates a Releases database in Notion and configures it for use.
 
 import sys
 from pathlib import Path
-
-
 from notion_client import Client
 from datetime import datetime
 import os
