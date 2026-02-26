@@ -1,5 +1,8 @@
-name: Daily Debug
-on: workflow_dispatch
+name: Watchtower Daily Digest
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 13 * * *'
 
 jobs:
   run-watchtower:
@@ -42,22 +45,6 @@ jobs:
               f.write('SMS_SEND_MODE = "${{ secrets.SMS_SEND_MODE }}"\n')
               f.write('NOTIFICATIONS = {"new_episode_any_show": True, "bulk_season_drop": True, "season_finale": True, "episode_airing_today": True, "returning_soon": True, "long_gap": True, "multiple_episodes_tonight": True}\n')
           PYEOF
-
-      - name: Debug notion-client
-        run: |
-          pip show notion-client
-          python -c "
-          from notion_client import Client
-          c = Client(auth='test')
-          print(dir(c.databases))
-          "
-          python -c "
-          from notion_client import Client
-          c = Client(auth='test')
-          print('databases:', [m for m in dir(c.databases) if not m.startswith('_')])
-          print('client:', [m for m in dir(c) if not m.startswith('_')])
-          "
-
 
       - name: Run Watchtower
         run: python watchtower.py
