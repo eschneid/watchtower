@@ -45,6 +45,15 @@ jobs:
               "multiple_episodes_tonight": True,
           }
           EOF
+          - name: Debug versions
+        run: |
+          pip show notion-client
+          python -c "import notion_client; print(dir(notion_client.Client()))"
+
 
       - name: Run Watchtower
         run: python watchtower.py
+
+
+
+
