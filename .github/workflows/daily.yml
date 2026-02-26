@@ -1,15 +1,9 @@
-name: Watchtower Daily Digest
-
-on:
-  schedule:
-    - cron: "30 2 23 2 *"  # 9:30pm
-
-  workflow_dispatch:        # Allows manual trigger from GitHub UI
+name: Daily Debug
+on: workflow_dispatch
 
 jobs:
   run-watchtower:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v3
 
@@ -18,8 +12,17 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Environment checks
+        run: |
+          pwd
+          ls -la
+          python -V
+          python -m pip -V
+
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
 
       - name: Create config.py from secrets
         run: |
@@ -30,7 +33,7 @@ jobs:
           REGION = "US"
           DIGEST_PAGE_TITLE = "📩 DAILY DIGEST"
           SMTP_SERVER = "${{ secrets.SMTP_SERVER }}"
-          SMTP_PORT = ${{ secrets.SMTP_PORT }}
+          SMTP_PORT = "${{ secrets.SMTP_PORT }}"
           EMAIL_FROM = "${{ secrets.EMAIL_FROM }}"
           EMAIL_PASSWORD = "${{ secrets.EMAIL_PASSWORD }}"
           SMS_RECIPIENTS = "${{ secrets.SMS_RECIPIENTS }}"
@@ -45,15 +48,11 @@ jobs:
               "multiple_episodes_tonight": True,
           }
           EOF
-          - name: Debug versions
-        run: |
-          pip show notion-client
-          python -c "import notion_client; print(dir(notion_client.Client()))"
 
+      - name: Debug versions
+        run: |
+          python -c "import os; print('NOTION_TOKEN present:', bool(os.getenv('NOTION_TOKEN')))"
+          python -c "import notion_client; print('notion-client import OK')"
 
       - name: Run Watchtower
         run: python watchtower.py
-
-
-
-
