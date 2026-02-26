@@ -1,0 +1,50 @@
+name: Watchtower Daily Digest
+
+on:
+  schedule:
+    - cron: "30 2 23 2 *"  # 9:30pm
+
+  workflow_dispatch:        # Allows manual trigger from GitHub UI
+
+jobs:
+  run-watchtower:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create config.py from secrets
+        run: |
+          cat > config.py << 'EOF'
+          NOTION_TOKEN = "${{ secrets.NOTION_TOKEN }}"
+          DATABASE_ID = "${{ secrets.DATABASE_ID }}"
+          TMDB_API_KEY = "${{ secrets.TMDB_API_KEY }}"
+          REGION = "US"
+          DIGEST_PAGE_TITLE = "📩 DAILY DIGEST"
+          SMTP_SERVER = "${{ secrets.SMTP_SERVER }}"
+          SMTP_PORT = ${{ secrets.SMTP_PORT }}
+          EMAIL_FROM = "${{ secrets.EMAIL_FROM }}"
+          EMAIL_PASSWORD = "${{ secrets.EMAIL_PASSWORD }}"
+          SMS_RECIPIENTS = "${{ secrets.SMS_RECIPIENTS }}"
+          SMS_SEND_MODE = "${{ secrets.SMS_SEND_MODE }}"
+          NOTIFICATIONS = {
+              "new_episode_any_show": True,
+              "bulk_season_drop": True,
+              "season_finale": True,
+              "episode_airing_today": True,
+              "returning_soon": True,
+              "long_gap": True,
+              "multiple_episodes_tonight": True,
+          }
+          EOF
+
+      - name: Run Watchtower
+        run: python watchtower.py
