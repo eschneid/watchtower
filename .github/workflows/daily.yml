@@ -42,11 +42,5 @@ jobs:
               f.write('NOTIFICATIONS = {"new_episode_any_show": True, "bulk_season_drop": True, "season_finale": True, "episode_airing_today": True, "returning_soon": True, "long_gap": True, "multiple_episodes_tonight": True}\n')
           PYEOF
 
-      - name: Debug versions
-        run: |
-          python -c "import os; print('NOTION_TOKEN present:', bool(os.getenv('NOTION_TOKEN')))"
-          python -c "import notion_client; print('notion-client import OK')"
-          python -c "from config import NOTION_TOKEN; print('Token length:', len(NOTION_TOKEN))"
-
       - name: Run Watchtower
         run: python watchtower.py
