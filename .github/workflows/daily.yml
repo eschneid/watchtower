@@ -21,8 +21,9 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          pip install --upgrade pip
+          pip install notion-client==3.0.0
+          pip install -r requirements.txt
 
       - name: Create config.py from secrets
         run: |
@@ -41,6 +42,15 @@ jobs:
               f.write('SMS_SEND_MODE = "${{ secrets.SMS_SEND_MODE }}"\n')
               f.write('NOTIFICATIONS = {"new_episode_any_show": True, "bulk_season_drop": True, "season_finale": True, "episode_airing_today": True, "returning_soon": True, "long_gap": True, "multiple_episodes_tonight": True}\n')
           PYEOF
+
+      - name: Debug notion-client
+          run: |
+          pip show notion-client
+          python -c "
+          from notion_client import Client
+          c = Client(auth='test')
+          print(dir(c.databases))
+          "
 
       - name: Run Watchtower
         run: python watchtower.py
