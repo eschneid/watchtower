@@ -24,35 +24,29 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt
 
-      - name: Create config.py from secrets
+        - name: Create config.py from secrets
         run: |
-          cat > config.py << 'EOF'
-          NOTION_TOKEN = "${{ secrets.NOTION_TOKEN }}"
-          DATABASE_ID = "${{ secrets.DATABASE_ID }}"
-          TMDB_API_KEY = "${{ secrets.TMDB_API_KEY }}"
-          REGION = "US"
-          DIGEST_PAGE_TITLE = "📩 DAILY DIGEST"
-          SMTP_SERVER = "${{ secrets.SMTP_SERVER }}"
-          SMTP_PORT = "${{ secrets.SMTP_PORT }}"
-          EMAIL_FROM = "${{ secrets.EMAIL_FROM }}"
-          EMAIL_PASSWORD = "${{ secrets.EMAIL_PASSWORD }}"
-          SMS_RECIPIENTS = "${{ secrets.SMS_RECIPIENTS }}"
-          SMS_SEND_MODE = "${{ secrets.SMS_SEND_MODE }}"
-          NOTIFICATIONS = {
-              "new_episode_any_show": True,
-              "bulk_season_drop": True,
-              "season_finale": True,
-              "episode_airing_today": True,
-              "returning_soon": True,
-              "long_gap": True,
-              "multiple_episodes_tonight": True,
-          }
-          EOF
+          python - << 'PYEOF'
+          with open("config.py", "w") as f:
+              f.write('NOTION_TOKEN = "${{ secrets.NOTION_TOKEN }}"\n')
+              f.write('DATABASE_ID = "${{ secrets.DATABASE_ID }}"\n')
+              f.write('TMDB_API_KEY = "${{ secrets.TMDB_API_KEY }}"\n')
+              f.write('REGION = "US"\n')
+              f.write('DIGEST_PAGE_TITLE = "📩 DAILY DIGEST"\n')
+              f.write('SMTP_SERVER = "${{ secrets.SMTP_SERVER }}"\n')
+              f.write('SMTP_PORT = ${{ secrets.SMTP_PORT }}\n')
+              f.write('EMAIL_FROM = "${{ secrets.EMAIL_FROM }}"\n')
+              f.write('EMAIL_PASSWORD = "${{ secrets.EMAIL_PASSWORD }}"\n')
+              f.write('SMS_RECIPIENTS = "${{ secrets.SMS_RECIPIENTS }}"\n')
+              f.write('SMS_SEND_MODE = "${{ secrets.SMS_SEND_MODE }}"\n')
+              f.write('NOTIFICATIONS = {"new_episode_any_show": True, "bulk_season_drop": True, "season_finale": True, "episode_airing_today": True, "returning_soon": True, "long_gap": True, "multiple_episodes_tonight": True}\n')
+          PYEOF
 
       - name: Debug versions
         run: |
           python -c "import os; print('NOTION_TOKEN present:', bool(os.getenv('NOTION_TOKEN')))"
           python -c "import notion_client; print('notion-client import OK')"
+          python -c "from config import NOTION_TOKEN; print('Token length:', len(NOTION_TOKEN))"
 
       - name: Run Watchtower
         run: python watchtower.py
