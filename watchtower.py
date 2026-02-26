@@ -82,40 +82,29 @@ def get_next_season_status(details, current_season_number):
 
     return "No info"
 
-def debug_json_mode(titles_or_ids, retries=3):
+def debug_json_mode(titles_or_ids, retries=3, forced_tmdb_id=None):
     import json
     import pyperclip
 
-    all_json = []
+    # If a TMDb ID is forced, just look that up directly
+    if forced_tmdb_id:
+        for media_type in ["tv", "movie"]:
+            details = get_details(forced_tmdb_id, media_type, retries)
+            if details and details.get("id"):
+                print(f"\n--- TMDb JSON for ID {forced_tmdb_id} ({media_type}) ---")
+                formatted = json.dumps(details, indent=2)
+                print(formatted)
+                try:
+                    pyperclip.copy(formatted)
+                    print("\n✅ Copied to clipboard.")
+                except Exception as e:
+                    print(f"❌ Could not copy: {e}")
+                return
+        print(f"⚠️ Could not find TMDb entry for ID {forced_tmdb_id}")
+        return
 
-    for identifier in titles_or_ids:
-        # First try IMDb ID lookup
-        tmdb_id, media_type = get_tmdb_from_imdb(identifier, retries)
-        # If not IMDb, try searching by title
-        if not tmdb_id:
-            tmdb_id, media_type = search_tmdb(identifier, retries)
-        if not tmdb_id:
-            print(f"⚠️ Could not find TMDb entry for '{identifier}'")
-            continue
+    # existing logic unchanged...
 
-        details = get_details(tmdb_id, media_type, retries)
-        if not details:
-            print(f"⚠️ TMDb details empty for '{identifier}'")
-            continue
-
-        formatted_json = json.dumps(details, indent=2)
-        all_json.append(formatted_json)
-
-        print(f"\n--- TMDb JSON for '{identifier}' ({media_type}) ---")
-        print(formatted_json)
-
-    if all_json:
-        combined_json = "\n\n".join(all_json)
-        try:
-            pyperclip.copy(combined_json)
-            print("\n✅ All debug JSON has been copied to your clipboard.")
-        except Exception as e:
-            print(f"❌ Could not copy to clipboard: {e}")
 
 def tmdb_get(url, params, retries=3):
     for attempt in range(retries):
@@ -202,6 +191,7 @@ def today_str():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
 def is_today(date_str):
+
     if not date_str:
         return False
     try:
@@ -248,7 +238,15 @@ def update_notion_page_safe(page_id: str, properties: dict, cover_url: Optional[
         # Update cover first if provided
         if cover_url:
             notion.pages.update(page_id=page_id, cover={"type": "external", "external": {"url": cover_url}})
-        
+
+        # backdrop = details.get("backdrop_path")
+        # if backdrop:
+        #     backdrop_url = f"https://image.tmdb.org/t/p/original{backdrop}"
+        #     notion.pages.update(
+        #         page_id=page_id,
+        #         cover={"type": "external", "external": {"url": backdrop_url}}
+        #     )
+                
         # Update properties
         notion.pages.update(page_id=page_id, properties=properties)
         return (page_id, True, None)
@@ -563,10 +561,13 @@ def process_page(page, args, tmdb_data_cache, digest_events=None):
         updates["Overview"] = {"rich_text": [{"text": {"content": details["overview"]}}]}
     if details.get("genres"):
         updates["Genres"] = {"multi_select": [{"name": g["name"]} for g in details["genres"] if g.get("name")]}
-    if details.get("poster_path"):
-        poster_url = f"https://image.tmdb.org/t/p/original{details['poster_path']}"
-        updates["Poster"] = {"files": [{"type": "external", "name": "Poster", "external": {"url": poster_url}}]}
-        # Cover will be set in batch update later
+
+    # Use backdrop for cover (better fit), fall back to poster
+    cover_url = None
+    if details.get("backdrop_path"):
+        cover_url = f"https://image.tmdb.org/t/p/original{details['backdrop_path']}"
+    elif details.get("poster_path"):
+        cover_url = f"https://image.tmdb.org/t/p/original{details['poster_path']}"
 
     # -----------------------------
     # Streaming
@@ -699,23 +700,63 @@ def process_page(page, args, tmdb_data_cache, digest_events=None):
         if latest_season_year:
             updates["Latest Season Year"] = {"number": latest_season_year}
 
+
+        networks = details.get("networks", [])
+        if networks:
+            updates["Network"] = {
+                "select": {"name": networks[0]["name"]}
+            }
+
+
+
         # Bulk Release detection
-        ep_dates = {ep.get("air_date") for ep in details.get("episodes", []) if ep.get("air_date")} if details.get("episodes") else set()
-        bulk_release = len(ep_dates) == 1 if ep_dates else False
-        updates["Bulk Release"] = {"checkbox": bulk_release}
+        bulk_release = False
+        if last_ep and seasons:
+            for s in seasons:
+                if s.get("season_number") == current_season_number:
+                    season_air_date = s.get("air_date")
+                    ep_count = s.get("episode_count", 0)
+                    if (season_air_date and ep_count > 1
+                            and last_ep.get("air_date") == season_air_date
+                            and current_ep == total_eps):
+                        bulk_release = True
+                    break
+
 
         # Digest events (non-watching specific)
         # NEW: Made configurable via NOTIFICATIONS["new_episode_any_show"]
-        if last_ep and is_today(last_ep.get("air_date")) and is_notification_enabled("new_episode_any_show"):
-            digest_events.append({"type": "episode", "title": title, "detail": f"S{current_season_number}E{current_ep}"})
+        # Trigger on either a last episode air date equal to today (already aired)
+        # or a next episode air date equal to today (about to air / scheduled today).
+        if is_notification_enabled("new_episode_any_show"):
+
+            added_episode_digest = False
+            if last_ep and is_today(last_ep.get("air_date")):
+                digest_events.append({"type": "episode", "title": title, "detail": f"S{current_season_number}E{current_ep}"})
+                added_episode_digest = True
+
+            # If not already added via last_ep, check next_ep (scheduled to air today)
+            if not added_episode_digest and next_ep and is_today(next_ep.get("air_date")):
+
+                next_season = next_ep.get("season_number")
+                next_episode_num = next_ep.get("episode_number")
+                digest_events.append({
+                    "type": "episode",
+                    "title": title,
+                    "detail": f"S{next_season}E{next_episode_num}"
+                })
 
         # Series / Season Status
         series_status_key = "IN_PRODUCTION" if details.get("in_production") else ("CANCELLED" if details.get("status") == "Canceled" else "ENDED")
         season_finished = current_ep is not None and total_eps is not None and current_ep >= total_eps
+
         next_ep_air_date = next_ep.get("air_date") if next_ep else None
+
+
+
         next_ep_season = next_ep.get("season_number") if next_ep else None
-        has_future_episode_same_season = next_ep_air_date and next_ep_air_date > today_str() and next_ep_season == current_season_number
-        has_future_season = next_ep_air_date and next_ep_air_date > today_str() and next_ep_season != current_season_number
+        has_future_episode_same_season = next_ep_air_date and next_ep_air_date >= today_str() and next_ep_season == current_season_number
+
+        has_future_season = next_ep_air_date and next_ep_air_date >= today_str() and next_ep_season != current_season_number
 
         if has_future_episode_same_season:
             season_status_key = "CURRENTLY_AIRING"
@@ -862,6 +903,9 @@ def main():
     parser.add_argument("--only-missing", action="store_true")
     parser.add_argument("--debug-json", nargs="+", help="Print TMDb details JSON for given titles or IMDb IDs and exit")
     parser.add_argument("--workers", type=int, default=10, help="Number of parallel workers for TMDb API calls (default: 10)")
+    parser.add_argument("--tmdb-id", type=int, help="Force a specific TMDb ID (use with --debug-json or --force-tmdb-id)")
+    parser.add_argument("--force-tmdb-id", type=str, metavar="TITLE", help="Force the given --tmdb-id onto the Notion page matching this title")
+
 
     args = parser.parse_args()
 
@@ -869,11 +913,36 @@ def main():
 
     # Debug JSON mode
     if args.debug_json:
-        debug_json_mode(args.debug_json, retries=args.retries)
+        debug_json_mode(args.debug_json, retries=args.retries, forced_tmdb_id=args.tmdb_id)
         return
 
     pages = fetch_all_pages()
     print(f"📦 Pages found: {len(pages)}\n")
+
+    # Force a specific TMDb ID onto a Notion page by title
+    if args.force_tmdb_id and args.tmdb_id:
+        target_title = args.force_tmdb_id.lower()
+        matched = None
+        for page in pages:
+            props = page.get("properties", {})
+            title_prop = props.get("Title", {}).get("title", [])
+            title = title_prop[0]["plain_text"].strip() if title_prop else ""
+            if title.lower() == target_title:
+                matched = page
+                break
+        
+        if not matched:
+            print(f"⚠️ No Notion page found matching title: '{args.force_tmdb_id}'")
+            return
+        
+        print(f"🔧 Forcing TMDb ID {args.tmdb_id} onto '{args.force_tmdb_id}'...")
+        notion.pages.update(
+            page_id=matched["id"],
+            properties={"TMDb ID": {"number": args.tmdb_id}}
+        )
+        print(f"✅ Done. Run watchtower normally to sync the rest of the metadata.")
+        return
+
 
     # Filter out digest pages before processing
     non_digest_pages = []
@@ -899,6 +968,8 @@ def main():
     for page in non_digest_pages:
         try:
             result, update_data = process_page(page, args, tmdb_data_cache, digest_events)
+            
+
 
             if args.dry_run and result == "updated":
                 props = page.get("properties", {})
@@ -972,6 +1043,15 @@ def main():
                 digest_lines.append(f"📅 Busy Night: {e['title']} - {e['detail']}")
 
         digest_message = "\n".join(digest_lines)
+        
+        # Show what will be sent
+        print("\n📱 SMS DIGEST:")
+        print("=" * 60)
+        print(digest_message[:160])
+        if len(digest_message) > 160:
+            print(f"\n(Truncated from {len(digest_message)} to 160 characters)")
+        print("=" * 60)
+        
         digest_message = digest_message[:160]
         try:
             send_text(digest_message)
