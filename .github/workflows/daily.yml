@@ -44,7 +44,7 @@ jobs:
           PYEOF
 
       - name: Debug notion-client
-          run: |
+        run: |
           pip show notion-client
           python -c "
           from notion_client import Client
