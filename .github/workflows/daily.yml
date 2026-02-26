@@ -51,6 +51,14 @@ jobs:
           c = Client(auth='test')
           print(dir(c.databases))
           "
+          python -c "
+          from notion_client import Client
+          c = Client(auth='test')
+          print('databases:', [m for m in dir(c.databases) if not m.startswith('_')])
+          print('client:', [m for m in dir(c) if not m.startswith('_')])
+          "
+"
+
 
       - name: Run Watchtower
         run: python watchtower.py
