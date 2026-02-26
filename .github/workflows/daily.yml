@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install notion-client==3.0.0
+          pip install notion-client==2.2.1
           pip install -r requirements.txt
 
       - name: Create config.py from secrets

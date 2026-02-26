@@ -1,5 +1,5 @@
 requests>=2.31.0
-notion-client==3.0.0
+notion-client==2.2.1
 httpx>=0.24.0
 python-dotenv>=1.0.0
 pyperclip>=1.8.0
