@@ -86,7 +86,6 @@ def debug_json_mode(titles_or_ids, retries=3, forced_tmdb_id=None):
     import json
     import pyperclip
 
-    # If a TMDb ID is forced, just look that up directly
     if forced_tmdb_id:
         for media_type in ["tv", "movie"]:
             details = get_details(forced_tmdb_id, media_type, retries)
@@ -103,7 +102,33 @@ def debug_json_mode(titles_or_ids, retries=3, forced_tmdb_id=None):
         print(f"⚠️ Could not find TMDb entry for ID {forced_tmdb_id}")
         return
 
-    # existing logic unchanged...
+    all_json = []
+    for identifier in titles_or_ids:
+        tmdb_id, media_type = get_tmdb_from_imdb(identifier, retries)
+        if not tmdb_id:
+            tmdb_id, media_type = search_tmdb(identifier, retries)
+        if not tmdb_id:
+            print(f"⚠️ Could not find TMDb entry for '{identifier}'")
+            continue
+
+        details = get_details(tmdb_id, media_type, retries)
+        if not details:
+            print(f"⚠️ TMDb details empty for '{identifier}'")
+            continue
+
+        formatted_json = json.dumps(details, indent=2)
+        all_json.append(formatted_json)
+        print(f"\n--- TMDb JSON for '{identifier}' ({media_type}) ---")
+        print(formatted_json)
+
+    if all_json:
+        combined_json = "\n\n".join(all_json)
+        try:
+            pyperclip.copy(combined_json)
+            print("\n✅ All debug JSON has been copied to your clipboard.")
+        except Exception as e:
+            print(f"❌ Could not copy to clipboard: {e}")
+
 
 
 def tmdb_get(url, params, retries=3):
@@ -115,7 +140,7 @@ def tmdb_get(url, params, retries=3):
         except Exception:
             if attempt == retries - 1:
                 raise
-            time.sleep(1.5)
+            time.sleep(1.5 * (2 ** attempt))
     return None
 
 def get_watch_providers(tmdb_id, media_type, region, retries=3):
@@ -534,13 +559,13 @@ def process_page(page, args, tmdb_data_cache, digest_events=None):
     title = title_prop[0]["plain_text"].strip() if title_prop else "Untitled"
 
     if page.get("archived"):
-        return ("skipped", None)
+        return ("skipped", None, "archived")
 
     # Get cached TMDb data
     tmdb_id, media_type, details, _ = tmdb_data_cache.get(page_id, (None, None, None, None))
-    
+
     if not tmdb_id or not media_type or not details:
-        return ("skipped", None)
+        return ("skipped", None, "no TMDb data resolved")
 
     imdb_id_prop = props.get("IMDb ID", {}).get("rich_text", [])
     imdb_id = imdb_id_prop[0]["plain_text"] if imdb_id_prop else None
@@ -548,11 +573,17 @@ def process_page(page, args, tmdb_data_cache, digest_events=None):
 
     mode = determine_mode(args, imdb_id, existing_tmdb_id)
     if not mode:
-        return ("skipped", None)
+        return ("skipped", None, "already has TMDb ID (--only-missing)")
 
     updates = {}
     updates["TMDb ID"] = {"number": tmdb_id}
     updates["Type"] = {"select": {"name": "TV" if media_type == "tv" else "Movie"}}
+
+    # Auto-populate IMDb ID from TMDb external_ids if not already in Notion
+    if not imdb_id:
+        tmdb_imdb_id = details.get("external_ids", {}).get("imdb_id")
+        if tmdb_imdb_id:
+            updates["IMDb ID"] = {"rich_text": [{"text": {"content": tmdb_imdb_id}}]}
 
     # -----------------------------
     # Common fields (Movies & TV)
@@ -878,13 +909,8 @@ def process_page(page, args, tmdb_data_cache, digest_events=None):
         updates.pop(field, None)
 
     if args.dry_run:
-        return ("updated", None)
+        return ("updated", None, None)
 
-    # Prepare cover URL if poster exists
-    cover_url = None
-    if details.get("poster_path"):
-        cover_url = f"https://image.tmdb.org/t/p/original{details['poster_path']}"
-    
     # Return update data for batch processing
     update_data = {
         "page_id": page_id,
@@ -892,8 +918,8 @@ def process_page(page, args, tmdb_data_cache, digest_events=None):
         "cover_url": cover_url,
         "title": title
     }
-    
-    return ("updated", update_data)
+
+    return ("updated", update_data, None)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -962,20 +988,26 @@ def main():
     # Now process pages with cached data
     digest_events = []
     stats = {"updated": 0, "skipped": 0}
+    skipped_items = []
     would_update = []
     pending_updates = []  # Collect updates for batch processing
 
     for page in non_digest_pages:
         try:
-            result, update_data = process_page(page, args, tmdb_data_cache, digest_events)
-            
+            result, update_data, skip_reason = process_page(page, args, tmdb_data_cache, digest_events)
 
+            if result == "skipped":
+                props = page.get("properties", {})
+                title_list = props.get("Title", {}).get("title", [])
+                title = title_list[0].get("plain_text", "Untitled") if title_list else "Untitled"
+                skipped_items.append((title, skip_reason))
 
             if args.dry_run and result == "updated":
                 props = page.get("properties", {})
-                title = props.get("Title", {}).get("title", [{}])[0].get("plain_text", "Untitled")
+                title_list = props.get("Title", {}).get("title", [])
+                title = title_list[0].get("plain_text", "Untitled") if title_list else "Untitled"
                 would_update.append(title)
-            
+
             if result == "updated" and update_data and not args.dry_run:
                 pending_updates.append(update_data)
 
@@ -983,9 +1015,11 @@ def main():
 
         except Exception as e:
             props = page.get("properties", {})
-            title = props.get("Title", {}).get("title", [{}])[0].get("plain_text", "Unknown")
+            title_list = props.get("Title", {}).get("title", [])
+            title = title_list[0].get("plain_text", "Unknown") if title_list else "Unknown"
             print(f"🔥 ERROR: {title} → {e}")
             stats["skipped"] += 1
+            skipped_items.append((title, f"exception: {e}"))
     
     # Apply all Notion updates in parallel (if not dry-run)
     if pending_updates and not args.dry_run:
@@ -994,6 +1028,7 @@ def main():
         
         # Report any errors
         if update_results["errors"]:
+            stats["updated"] -= len(update_results["errors"])
             print(f"\n⚠️ ERRORS DURING UPDATE:")
             for err in update_results["errors"]:
                 print(f"  • {err['title']}: {err['error']}")
@@ -1065,6 +1100,10 @@ def main():
     print("\n📊 SUMMARY")
     for k, v in stats.items():
         print(f"{k.title()}: {v}")
+    if skipped_items:
+        print("\n⏭️ SKIPPED DETAILS:")
+        for title, reason in skipped_items:
+            print(f"  • {title}: {reason}")
 
     if args.dry_run:
         print("\n🧪 DRY RUN SUMMARY")
