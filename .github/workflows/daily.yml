@@ -43,7 +43,7 @@ jobs:
               f.write('EMAIL_PASSWORD = "${{ secrets.EMAIL_PASSWORD }}"\n')
               f.write('SMS_RECIPIENTS = "${{ secrets.SMS_RECIPIENTS }}"\n')
               f.write('SMS_SEND_MODE = "${{ secrets.SMS_SEND_MODE }}"\n')
-              f.write('NOTIFICATIONS = {"new_episode_any_show": True, "bulk_season_drop": True, "season_finale": True, "episode_airing_today": True, "returning_soon": True, "long_gap": True, "multiple_episodes_tonight": True}\n')
+              f.write('NOTIFICATIONS = {"new_episode_any_show": False, "episode_airing_today": False, "season_finale": False, "bulk_season_drop": False, "returning_soon": False, "long_gap": False, "multiple_episodes_tonight": False}\n')
           PYEOF
 
       - name: Run Watchtower
