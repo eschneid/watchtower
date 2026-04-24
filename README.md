@@ -124,3 +124,4 @@ python send_text.py "Test message"
 - Ensure `.env` exists (copy from `.env.example`)
 - Verify all required fields are filled
 - Check for typos in environment variable names
+
